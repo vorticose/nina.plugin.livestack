@@ -290,6 +290,21 @@ namespace NINA.Plugin.Livestack {
             return fits_read_key_float(filePtr, keyname);
         }
 
+        public long ReadLongHeader(string keyname) {
+            return fits_read_key_lng(filePtr, keyname);
+        }
+
+        /// <summary>
+        /// Try to read a long header. Returns null if the key does not exist.
+        /// </summary>
+        public long? TryReadLongHeader(string keyname) {
+            try {
+                return fits_read_key_lng(filePtr, keyname);
+            } catch {
+                return null;
+            }
+        }
+
         private const int FLEN_KEYWORD = 75;
         private const int FLEN_COMMENT = 73;
 

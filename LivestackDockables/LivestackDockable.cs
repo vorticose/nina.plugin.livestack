@@ -30,6 +30,8 @@ using NINA.Image.ImageData;
 using NINA.Core.Enum;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Plugin.Interfaces;
+using NINA.Plugin.Livestack.MultiNight;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 
 namespace NINA.Plugin.Livestack.LivestackDockables {
@@ -105,6 +107,9 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
         private readonly ICameraMediator cameraMediator;
         private readonly IMessageBroker messageBroker;
         private Guid? stackSessionId = null;
+
+        // Multi-night: tracks active sidecars keyed by "Target-Filter"
+        private readonly ConcurrentDictionary<string, (StackSidecar sidecar, string path)> activeSidecars = new();
 
         [RelayCommand(IncludeCancelCommand = true)]
         private Task StartLiveStack(CancellationToken token) {
@@ -290,6 +295,15 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 var failedGatesInfo = "Live Stack - Image ignored as it does not meet quality gate critera." + Environment.NewLine + string.Join(Environment.NewLine, failedGates.Select(x => $"{x.Name}: {x.Value}"));
                 Logger.Warning(failedGatesInfo);
                 Notification.ShowWarning(failedGatesInfo);
+
+                // Multi-night: record rejection in sidecar
+                var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
+                var filter = string.IsNullOrWhiteSpace(item.Filter) ? LiveStackBag.NOFILTER : item.Filter;
+                if (item.IsBayered) { filter = LiveStackBag.RED_OSC; }
+                foreach (var gate in failedGates) {
+                    RecordRejectedFrame(target, filter, $"quality_gate_{gate.Name}");
+                }
+
                 return false;
             }
             return true;
@@ -305,6 +319,28 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 var stars = ImageTransformer.GetStars(item.StarList, item.Width, item.Height);
                 if (item.IsBayered) { stars = null; }
                 var bag = new LiveStackBag(target, filter, new ImageProperties(item.Width, item.Height, (int)profileService.ActiveProfile.CameraSettings.BitDepth, item.IsBayered, item.Gain, item.Offset), item.MetaData, stars);
+
+                // Multi-night: attempt to resume from existing stack
+                var resumeResult = MultiNightManager.TryResume(target, filter, item.Width, item.Height,
+                    (int)profileService.ActiveProfile.CameraSettings.BinningX);
+                if (resumeResult != null) {
+                    bag.ResumeFrom(resumeResult.Stack, resumeResult.ImageCount, resumeResult.ReferenceStars);
+                    var sidecarKey = $"{target}-{filter}";
+                    activeSidecars[sidecarKey] = (resumeResult.Sidecar, resumeResult.SidecarPath);
+                    Notification.ShowInformation($"[MultiNight] Resumed {target}-{filter}: {resumeResult.ImageCount} frames");
+                } else if (LivestackMediator.Plugin.MultiNightMode) {
+                    // Multi-night enabled but no existing stack — create fresh sidecar
+                    var (sidecar, sidecarPath) = MultiNightManager.CreateFreshSidecar(target, filter, item.Width, item.Height,
+                        (int)profileService.ActiveProfile.CameraSettings.BinningX);
+                    var sidecarKey = $"{target}-{filter}";
+                    activeSidecars[sidecarKey] = (sidecar, sidecarPath);
+
+                    // Save reference stars to sidecar
+                    if (stars != null) {
+                        MultiNightManager.SaveReferenceStars(sidecar, stars);
+                    }
+                }
+
                 tab = new LiveStackTab(profileService, bag);
                 Tabs.Add(tab);
                 return tab as LiveStackTab;
@@ -333,11 +369,15 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
             tab.AddImage(transformedImage);
 
+            // Multi-night: record accepted frame in sidecar
+            RecordAcceptedFrame(tab.Target, tab.Filter, item.ExposureTime);
+
             StatusUpdate("Rendering stack", item);
             await tab.Refresh(token);
             if (LivestackMediator.Plugin.SaveStackedLights) {
                 StatusUpdate("Saving stack", item);
                 tab.SaveToDisk();
+                SaveSidecar(tab.Target, tab.Filter);
             }
 
             _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(tab.StackCount, tab.Filter, tab.Target, tab.StackImage), correlation));
@@ -424,11 +464,19 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 colorTab = new ColorCombinationTab(profileService, redTab, greenTab, blueTab);
                 Tabs.Add(colorTab);
             }
+            // Multi-night: record accepted frame for all OSC channels
+            RecordAcceptedFrame(item.Target, LiveStackBag.RED_OSC, item.ExposureTime);
+            RecordAcceptedFrame(item.Target, LiveStackBag.GREEN_OSC, item.ExposureTime);
+            RecordAcceptedFrame(item.Target, LiveStackBag.BLUE_OSC, item.ExposureTime);
+
             if (LivestackMediator.Plugin.SaveStackedLights) {
                 StatusUpdate("Saving stacks", item);
                 redTab.SaveToDisk();
                 greenTab.SaveToDisk();
                 blueTab.SaveToDisk();
+                SaveSidecar(item.Target, LiveStackBag.RED_OSC);
+                SaveSidecar(item.Target, LiveStackBag.GREEN_OSC);
+                SaveSidecar(item.Target, LiveStackBag.BLUE_OSC);
             }
 
             _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(redTab.StackCount, redTab.Filter, redTab.Target, redTab.StackImage), correlation));
@@ -528,6 +576,29 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             }
             foreach (var meta in LivestackMediator.CalibrationVM.SessionFlatLibrary) {
                 calibrationManager.RegisterFlatMaster(meta);
+            }
+        }
+
+        // Multi-night sidecar helpers
+
+        private void RecordAcceptedFrame(string target, string filter, double exposureSeconds) {
+            var key = $"{target}-{filter}";
+            if (activeSidecars.TryGetValue(key, out var entry)) {
+                entry.sidecar.RecordAcceptedFrame(exposureSeconds);
+            }
+        }
+
+        private void RecordRejectedFrame(string target, string filter, string reason) {
+            var key = $"{target}-{filter}";
+            if (activeSidecars.TryGetValue(key, out var entry)) {
+                entry.sidecar.RecordRejectedFrame(reason);
+            }
+        }
+
+        private void SaveSidecar(string target, string filter) {
+            var key = $"{target}-{filter}";
+            if (activeSidecars.TryGetValue(key, out var entry)) {
+                entry.sidecar.Save(entry.path);
             }
         }
 

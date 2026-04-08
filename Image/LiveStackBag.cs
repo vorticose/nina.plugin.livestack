@@ -49,6 +49,18 @@ namespace NINA.Plugin.Livestack.Image {
             ImageCount++;
         }
 
+        /// <summary>
+        /// Resume a stack from previously saved data (multi-night mode).
+        /// Sets the stack array and image count without triggering the sequential average formula.
+        /// </summary>
+        public void ResumeFrom(float[] stack, int imageCount, List<Accord.Point> referenceStars) {
+            Stack = stack;
+            ImageCount = imageCount;
+            if (referenceStars != null && referenceStars.Count > 0) {
+                ReferenceImageStars = referenceStars;
+            }
+        }
+
         public void ForcePushReference(ImageProperties properties, List<Accord.Point> referenceStars, float[] stack) {
             Properties = properties;
             ReferenceImageStars = referenceStars;
