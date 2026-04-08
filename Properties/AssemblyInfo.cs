@@ -52,7 +52,7 @@ using System.Windows.Markup;
 //[Optional] An additional url to an example example screenshot of your plugin in action
 [assembly: AssemblyMetadata("AltScreenshotURL", "https://github.com/isbeorn/nina.plugin.livestack/blob/main/featured2.jpg?raw=true")]
 //[Optional] An in-depth description of your plugin
-[assembly: AssemblyMetadata("LongDescription", @"This plugin enables live stacking functionality within N.I.N.A. - It allows you to view a live stack of your images, calibrate them, and manage them in real-time during your imaging session.
+[assembly: AssemblyMetadata("LongDescription", @"**CUSTOM FORK** — Multi-night stacking support. This plugin enables live stacking functionality within N.I.N.A. - It allows you to view a live stack of your images, calibrate them, and manage them in real-time during your imaging session.
 
 ## Prerequisites
 

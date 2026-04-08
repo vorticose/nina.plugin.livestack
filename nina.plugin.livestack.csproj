@@ -13,7 +13,7 @@
     <Title>Livestack</Title>
     <Authors>Stefan Berg @isbeorn</Authors>
     <Product>Livestack</Product>
-    <Description>Live stacking within N.I.N.A.</Description>
+    <Description>**CUSTOM FORK** Live stacking within N.I.N.A.</Description>
     <Copyright>Copyright ©  2024-2025</Copyright>
   </PropertyGroup>
   <ItemGroup>

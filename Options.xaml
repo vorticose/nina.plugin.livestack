@@ -212,6 +212,71 @@
                     StepSize="1"
                     Value="{Binding DefaultDownsample, Mode=TwoWay}" />
             </Grid>
+            <GroupBox Margin="0,10,0,0" Header="Multi-Night Stacking">
+                <StackPanel Orientation="Vertical">
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Livestack_Label" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Enable multi-night mode" />
+                        <CheckBox
+                            Grid.Column="1"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            IsChecked="{Binding MultiNightMode, Mode=TwoWay}" />
+                    </Grid>
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Livestack_Label" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Plate solve threshold (arcmin)" />
+                        <ninactrl:StepperControl
+                            Grid.Column="1"
+                            MinWidth="100"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            MaxValue="60"
+                            MinValue="0.1"
+                            StepSize="0.5"
+                            Value="{Binding PlatesolveThresholdArcmin, Mode=TwoWay}" />
+                    </Grid>
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Livestack_Label" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Alignment residual threshold (px)" />
+                        <ninactrl:StepperControl
+                            Grid.Column="1"
+                            MinWidth="100"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            MaxValue="50"
+                            MinValue="0.1"
+                            StepSize="0.5"
+                            Value="{Binding AffineResidualThresholdPixels, Mode=TwoWay}" />
+                    </Grid>
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Livestack_Label" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="Plate solve retry frames" />
+                        <ninactrl:IntStepperControl
+                            Grid.Column="1"
+                            MinWidth="100"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            MaxValue="10"
+                            MinValue="1"
+                            StepSize="1"
+                            Value="{Binding PlatesolveRetryFrames, Mode=TwoWay}" />
+                    </Grid>
+                </StackPanel>
+            </GroupBox>
+
             <GroupBox
                 x:Name="PART_BiasLibrary"
                 Margin="0,5,0,0"

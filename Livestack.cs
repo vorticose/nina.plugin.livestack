@@ -181,6 +181,54 @@ namespace NINA.Plugin.Livestack {
             }
         }
 
+        // Multi-Night Stacking settings
+
+        public bool MultiNightMode {
+            get {
+                return PluginSettings.GetValueBoolean(nameof(MultiNightMode), false);
+            }
+            set {
+                PluginSettings.SetValueBoolean(nameof(MultiNightMode), value);
+                RaisePropertyChanged();
+            }
+        }
+
+        public double PlatesolveThresholdArcmin {
+            get {
+                return PluginSettings.GetValueDouble(nameof(PlatesolveThresholdArcmin), 5.0);
+            }
+            set {
+                if (value < 0.1) { value = 0.1; }
+                if (value > 60.0) { value = 60.0; }
+                PluginSettings.SetValueDouble(nameof(PlatesolveThresholdArcmin), value);
+                RaisePropertyChanged();
+            }
+        }
+
+        public double AffineResidualThresholdPixels {
+            get {
+                return PluginSettings.GetValueDouble(nameof(AffineResidualThresholdPixels), 3.0);
+            }
+            set {
+                if (value < 0.1) { value = 0.1; }
+                if (value > 50.0) { value = 50.0; }
+                PluginSettings.SetValueDouble(nameof(AffineResidualThresholdPixels), value);
+                RaisePropertyChanged();
+            }
+        }
+
+        public int PlatesolveRetryFrames {
+            get {
+                return PluginSettings.GetValueInt32(nameof(PlatesolveRetryFrames), 3);
+            }
+            set {
+                if (value < 1) { value = 1; }
+                if (value > 10) { value = 10; }
+                PluginSettings.SetValueInt32(nameof(PlatesolveRetryFrames), value);
+                RaisePropertyChanged();
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
