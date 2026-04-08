@@ -362,6 +362,18 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     stars = ImageMath.Flip(stars, item.Width, item.Height);
                     affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, tab.ReferenceStars);
                 }
+
+                // Layer 2: check affine residual before stacking
+                var residual = ImageTransformer.ComputeAlignmentResidual(stars, tab.ReferenceStars, affineTransformationMatrix, flipped);
+                var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
+                if (residual > threshold) {
+                    var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
+                    Logger.Warning($"[MultiNight] Frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px");
+                    Notification.ShowWarning($"Live Stack - Frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
+                    RecordRejectedFrame(target, tab.Filter, "layer2_affine_residual");
+                    return;
+                }
+
                 transformedImage = ImageTransformer.ApplyAffineTransformation(theImageArray, item.Width, item.Height, affineTransformationMatrix, flipped);
 
                 StatusUpdate("Updating stack", item);
@@ -427,6 +439,19 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     stars = ImageMath.Flip(stars, item.Width, item.Height);
                     affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, redTab.ReferenceStars);
                 }
+
+                // Layer 2: check affine residual before stacking (check on red channel only)
+                var residual = ImageTransformer.ComputeAlignmentResidual(stars, redTab.ReferenceStars, affineTransformationMatrix, flipped);
+                var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
+                if (residual > threshold) {
+                    Logger.Warning($"[MultiNight] OSC frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px");
+                    Notification.ShowWarning($"Live Stack - OSC frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
+                    RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "layer2_affine_residual");
+                    RecordRejectedFrame(item.Target, LiveStackBag.GREEN_OSC, "layer2_affine_residual");
+                    RecordRejectedFrame(item.Target, LiveStackBag.BLUE_OSC, "layer2_affine_residual");
+                    return;
+                }
+
                 var redAligned = ImageTransformer.ApplyAffineTransformation(debayeredImage.Data.Red, item.Width, item.Height, affineTransformationMatrix, flipped);
                 redTab.AddImage(redAligned);
             }

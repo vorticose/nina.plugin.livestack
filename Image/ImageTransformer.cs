@@ -184,6 +184,37 @@ namespace NINA.Plugin.Livestack.Image {
             return transformedImageData;
         }
 
+        /// <summary>
+        /// Compute the RMS alignment residual by transforming incoming stars through the affine matrix
+        /// and measuring the distance to the nearest reference star. Returns the RMS error in pixels.
+        /// </summary>
+        public static double ComputeAlignmentResidual(List<Point> stars, List<Point> referenceStars, double[,] affineMatrix, bool flipped = false) {
+            if (stars == null || stars.Count == 0 || referenceStars == null || referenceStars.Count == 0) {
+                return double.MaxValue;
+            }
+
+            double sumSquaredError = 0;
+            int count = 0;
+
+            foreach (var star in stars) {
+                var transformed = ApplyAffineMatrix((int)star.X, (int)star.Y, affineMatrix);
+
+                // Find nearest reference star
+                double minDistSq = double.MaxValue;
+                foreach (var refStar in referenceStars) {
+                    double dx = transformed.X - refStar.X;
+                    double dy = transformed.Y - refStar.Y;
+                    double distSq = dx * dx + dy * dy;
+                    if (distSq < minDistSq) minDistSq = distSq;
+                }
+
+                sumSquaredError += minDistSq;
+                count++;
+            }
+
+            return count > 0 ? Math.Sqrt(sumSquaredError / count) : double.MaxValue;
+        }
+
         public static bool IsFlippedImage(double[,] affineMatrix) {
             // Extract the top-left 2x2 part of the affine transformation matrix
             double a = affineMatrix[0, 0];
