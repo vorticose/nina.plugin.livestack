@@ -39,13 +39,16 @@ function Close-NINA {
 
 Close-NINA | Out-Null
 
-# --- Remove stock Livestack plugin if present (same GUID = conflict) ---
+# --- Remove stock versioned Livestack DLL if present (causes duplicate MEF export) ---
 $stockDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Livestack"
 if (Test-Path $stockDir) {
-    # Check if it's the stock version (no CUSTOM FORK in the DLL)
-    $dllPath = Join-Path $stockDir "nina.plugin.livestack.dll"
-    if (Test-Path $dllPath) {
-        Write-Host "Existing Livestack plugin found. Will be overwritten by build." -ForegroundColor Yellow
+    $versionedDlls = Get-ChildItem $stockDir -Filter "nina.plugin.livestack-*.dll"
+    foreach ($dll in $versionedDlls) {
+        Write-Host "Removing stock versioned DLL: $($dll.Name)" -ForegroundColor Yellow
+        Remove-Item $dll.FullName -Force
+    }
+    if ($versionedDlls.Count -eq 0) {
+        Write-Host "No stock versioned DLLs found. Build will overwrite existing." -ForegroundColor Cyan
     }
 }
 
