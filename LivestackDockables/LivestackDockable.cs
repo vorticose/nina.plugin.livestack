@@ -110,6 +110,10 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
         // Multi-night: tracks active sidecars keyed by "Target-Filter"
         private readonly ConcurrentDictionary<string, (StackSidecar sidecar, string path)> activeSidecars = new();
+        // Multi-night: tracks which (Target-Filter) have passed Layer 1 validation
+        private readonly ConcurrentDictionary<string, bool> layer1Validated = new();
+        // Multi-night: tracks plate solve retry counts per (Target-Filter)
+        private readonly ConcurrentDictionary<string, int> layer1RetryCount = new();
 
         [RelayCommand(IncludeCancelCommand = true)]
         private Task StartLiveStack(CancellationToken token) {
@@ -517,6 +521,20 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     SelectedTab = tab;
                 }
 
+                // Layer 1: plate solve validation (runs on first frame of resumed session)
+                var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
+                var filter = string.IsNullOrWhiteSpace(item.Filter) ? LiveStackBag.NOFILTER : item.Filter;
+                if (item.IsBayered) { filter = LiveStackBag.RED_OSC; }
+                if (!CheckLayer1PlatesolveValidation(item, target, filter)) {
+                    return; // Layer 1 failed — resume aborted, will start fresh on next frame
+                }
+
+                // Store WCS in sidecar on first frame if not already present
+                var sidecarKey = $"{target}-{filter}";
+                if (activeSidecars.TryGetValue(sidecarKey, out var sidecarEntry) && sidecarEntry.sidecar.ReferenceWcs == null) {
+                    TryStoreWcsFromFrame(item, sidecarEntry.sidecar, sidecarEntry.path, sidecarKey);
+                }
+
                 var calibratedFrame = CalibrateFrame(item);
 
                 SaveCalibratedFrameIfNeeded(calibratedFrame, item);
@@ -602,6 +620,101 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             foreach (var meta in LivestackMediator.CalibrationVM.SessionFlatLibrary) {
                 calibrationManager.RegisterFlatMaster(meta);
             }
+        }
+
+        // Multi-night Layer 1: plate solve validation (per-session, on first frame of resume)
+
+        /// <summary>
+        /// Check Layer 1 plate solve validation for a resumed stack.
+        /// Returns true if the frame passes or Layer 1 is not applicable.
+        /// Returns false if the frame should be rejected (pointing too far off).
+        /// </summary>
+        private bool CheckLayer1PlatesolveValidation(LiveStackItem item, string target, string filter) {
+            var key = $"{target}-{filter}";
+
+            // Already validated for this session, skip
+            if (layer1Validated.ContainsKey(key)) {
+                return true;
+            }
+
+            // Not a resumed stack — no Layer 1 check needed
+            if (!activeSidecars.TryGetValue(key, out var entry)) {
+                layer1Validated[key] = true;
+                return true;
+            }
+
+            var sidecar = entry.sidecar;
+
+            // No reference WCS in sidecar — this is the first session ever, just store it
+            if (sidecar.ReferenceWcs == null) {
+                TryStoreWcsFromFrame(item, sidecar, entry.path, key);
+                layer1Validated[key] = true;
+                return true;
+            }
+
+            // Check if frame has WCS
+            var wcs = item.MetaData.WorldCoordinateSystem;
+            if (wcs == null) {
+                // No WCS on frame — track retries
+                var retries = layer1RetryCount.AddOrUpdate(key, 1, (_, count) => count + 1);
+                var maxRetries = LivestackMediator.Plugin.PlatesolveRetryFrames;
+                if (retries >= maxRetries) {
+                    Logger.Warning($"[MultiNight] Layer 1 skipped: no WCS available after {retries} frames for {target}-{filter}");
+                    layer1Validated[key] = true; // Skip Layer 1, proceed with Layer 2 only
+                } else {
+                    Logger.Info($"[MultiNight] Layer 1: no WCS on frame {retries}/{maxRetries}, will retry on next frame");
+                }
+                return true; // Don't reject the frame — just haven't validated yet
+            }
+
+            // Compute angular separation
+            var frameRa = wcs.Coordinates.RADegrees;
+            var frameDec = wcs.Coordinates.Dec;
+            var refRa = sidecar.ReferenceWcs.Ra;
+            var refDec = sidecar.ReferenceWcs.Dec;
+            var separationArcmin = ComputeAngularSeparationArcmin(frameRa, frameDec, refRa, refDec);
+            var threshold = LivestackMediator.Plugin.PlatesolveThresholdArcmin;
+
+            if (separationArcmin > threshold) {
+                Logger.Warning($"[MultiNight] Layer 1 failed: pointing offset {separationArcmin:F1} arcmin exceeds threshold {threshold:F1} arcmin for {target}-{filter} — starting fresh");
+                Notification.ShowWarning($"Live Stack - Multi-night resume aborted: pointing offset {separationArcmin:F1}' exceeds {threshold:F1}' threshold");
+
+                // Abort resume: archive existing stack and clear the tab
+                // The next call to GetOrCreateStackBag will create a fresh one
+                activeSidecars.TryRemove(key, out _);
+                layer1Validated[key] = true;
+                return false;
+            }
+
+            Logger.Info($"[MultiNight] Layer 1 passed: pointing offset {separationArcmin:F1} arcmin (threshold {threshold:F1}) for {target}-{filter}");
+            layer1Validated[key] = true;
+            return true;
+        }
+
+        private void TryStoreWcsFromFrame(LiveStackItem item, StackSidecar sidecar, string sidecarPath, string key) {
+            var wcs = item.MetaData.WorldCoordinateSystem;
+            if (wcs != null) {
+                sidecar.ReferenceWcs = new WcsSolution {
+                    Ra = wcs.Coordinates.RADegrees,
+                    Dec = wcs.Coordinates.Dec,
+                    Rotation = wcs.Rotation,
+                    PixelScale = wcs.PixelScaleX,
+                    SolvedAt = DateTime.UtcNow
+                };
+                sidecar.Save(sidecarPath);
+                Logger.Info($"[MultiNight] Stored reference WCS: RA={wcs.Coordinates.RADegrees:F4} Dec={wcs.Coordinates.Dec:F4} Rot={wcs.Rotation:F1}");
+            }
+        }
+
+        private static double ComputeAngularSeparationArcmin(double ra1Deg, double dec1Deg, double ra2Deg, double dec2Deg) {
+            var ra1 = ra1Deg * Math.PI / 180.0;
+            var dec1 = dec1Deg * Math.PI / 180.0;
+            var ra2 = ra2Deg * Math.PI / 180.0;
+            var dec2 = dec2Deg * Math.PI / 180.0;
+            var cosD = Math.Sin(dec1) * Math.Sin(dec2) + Math.Cos(dec1) * Math.Cos(dec2) * Math.Cos(ra1 - ra2);
+            cosD = Math.Max(-1.0, Math.Min(1.0, cosD)); // Clamp for floating point safety
+            var dRad = Math.Acos(cosD);
+            return dRad * (180.0 / Math.PI) * 60.0; // Convert to arcminutes
         }
 
         // Multi-night sidecar helpers
