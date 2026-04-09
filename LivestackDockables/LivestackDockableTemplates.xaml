@@ -376,6 +376,20 @@
                                                 Stretch="Uniform"
                                                 UseLayoutRounding="True" />
                                         </Button>
+                                        <Button
+                                            Width="35"
+                                            Margin="2.5"
+                                            Command="{Binding DataContext.ResetStackCommand, ElementName=PART_TheGrid}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Reset stack (archive and start fresh)">
+                                            <Path
+                                                Margin="5"
+                                                Data="{StaticResource LoopSVG}"
+                                                Fill="{StaticResource ButtonForegroundDisabledBrush}"
+                                                RenderTransformOrigin="0.5,0.5"
+                                                Stretch="Uniform"
+                                                UseLayoutRounding="True" />
+                                        </Button>
                                         <Grid HorizontalAlignment="Right" VerticalAlignment="Center">
                                             <local:PopupButton
                                                 Margin="2.5"
