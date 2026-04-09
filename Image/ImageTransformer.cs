@@ -62,7 +62,21 @@ namespace NINA.Plugin.Livestack.Image {
             return Math.Sqrt(Math.Pow(position.X - centerX, 2) + Math.Pow(position.Y - centerY, 2));
         }
 
+        public class AffineResult {
+            public double[,] Matrix { get; set; }
+            /// <summary>
+            /// RMS residual in pixels, computed from the matched star pairs used
+            /// to build the affine matrix. Measures how well the transform fits.
+            /// </summary>
+            public double ResidualPixels { get; set; }
+            public int MatchedStarCount { get; set; }
+        }
+
         public static double[,] ComputeAffineTransformation(List<Point> stars, List<Point> referenceStars) {
+            return ComputeAffineTransformationWithResidual(stars, referenceStars).Matrix;
+        }
+
+        public static AffineResult ComputeAffineTransformationWithResidual(List<Point> stars, List<Point> referenceStars) {
             var referenceTriangles = ComputeTriangleList(referenceStars);
             var targetTriangles = ComputeTriangleList(stars);
 
@@ -85,7 +99,23 @@ namespace NINA.Plugin.Livestack.Image {
                 targetPoints[i, 1] = star2.Y;
             }
             var matrix = ComputeAffineTransformationMatrix(sourcePoints, targetPoints);
-            return matrix;
+
+            // Compute residual from the matched pairs: transform each reference star
+            // through the matrix and measure distance to its matched incoming star
+            double sumSquaredError = 0;
+            for (int i = 0; i < triangleMatches.Count; i++) {
+                var transformed = ApplyAffineMatrix((int)sourcePoints[i, 0], (int)sourcePoints[i, 1], matrix);
+                double dx = transformed.X - targetPoints[i, 0];
+                double dy = transformed.Y - targetPoints[i, 1];
+                sumSquaredError += dx * dx + dy * dy;
+            }
+            double residual = triangleMatches.Count > 0 ? Math.Sqrt(sumSquaredError / triangleMatches.Count) : double.MaxValue;
+
+            return new AffineResult {
+                Matrix = matrix,
+                ResidualPixels = residual,
+                MatchedStarCount = triangleMatches.Count
+            };
         }
 
         public static float[] ApplyAffineTransformation(float[] sourceImageData, int width, int height, double[,] affineMatrix, bool flippedImage = false) {
@@ -182,40 +212,6 @@ namespace NINA.Plugin.Livestack.Image {
             }
 
             return transformedImageData;
-        }
-
-        /// <summary>
-        /// Compute the RMS alignment residual by transforming reference stars through the affine matrix
-        /// (which maps reference → incoming) and measuring the distance to the nearest actual incoming star.
-        /// Returns the RMS error in pixels.
-        /// </summary>
-        public static double ComputeAlignmentResidual(List<Point> stars, List<Point> referenceStars, double[,] affineMatrix, bool flipped = false) {
-            if (stars == null || stars.Count == 0 || referenceStars == null || referenceStars.Count == 0) {
-                return double.MaxValue;
-            }
-
-            double sumSquaredError = 0;
-            int count = 0;
-
-            // The affine matrix maps reference coordinates → incoming coordinates
-            // So we transform each reference star and find the nearest actual incoming star
-            foreach (var refStar in referenceStars) {
-                var transformed = ApplyAffineMatrix((int)refStar.X, (int)refStar.Y, affineMatrix);
-
-                // Find nearest incoming star
-                double minDistSq = double.MaxValue;
-                foreach (var star in stars) {
-                    double dx = transformed.X - star.X;
-                    double dy = transformed.Y - star.Y;
-                    double distSq = dx * dx + dy * dy;
-                    if (distSq < minDistSq) minDistSq = distSq;
-                }
-
-                sumSquaredError += minDistSq;
-                count++;
-            }
-
-            return count > 0 ? Math.Sqrt(sumSquaredError / count) : double.MaxValue;
         }
 
         public static bool IsFlippedImage(double[,] affineMatrix) {

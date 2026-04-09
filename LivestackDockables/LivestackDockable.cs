@@ -412,25 +412,27 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             } else {
                 StatusUpdate("Aligning frame", item);
                 var stars = ImageTransformer.GetStars(item.StarList, item.Width, item.Height);
-                var affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, tab.ReferenceStars);
+                var affineResult = ImageTransformer.ComputeAffineTransformationWithResidual(stars, tab.ReferenceStars);
+                var affineTransformationMatrix = affineResult.Matrix;
                 var flipped = ImageTransformer.IsFlippedImage(affineTransformationMatrix);
                 if (flipped) {
                     // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
                     stars = ImageMath.Flip(stars, item.Width, item.Height);
-                    affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, tab.ReferenceStars);
+                    affineResult = ImageTransformer.ComputeAffineTransformationWithResidual(stars, tab.ReferenceStars);
+                    affineTransformationMatrix = affineResult.Matrix;
                 }
 
                 // Layer 2: check affine residual before stacking
-                var residual = ImageTransformer.ComputeAlignmentResidual(stars, tab.ReferenceStars, affineTransformationMatrix, flipped);
+                var residual = affineResult.ResidualPixels;
                 var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
                 if (residual > threshold) {
                     var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
-                    Logger.Warning($"[MultiNight] Frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px — {target}-{tab.Filter}");
+                    Logger.Warning($"[MultiNight] Frame rejected: affine residual {residual:F1}px ({affineResult.MatchedStarCount} matched stars) exceeds threshold {threshold:F1}px — {target}-{tab.Filter}");
                     Notification.ShowWarning($"Live Stack - Frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
                     RecordRejectedFrame(target, tab.Filter, "layer2_affine_residual");
                     return;
                 }
-                Logger.Info($"[MultiNight] Frame accepted: affine residual {residual:F1}px (threshold {threshold:F1}px) — {tab.Target}-{tab.Filter}");
+                Logger.Info($"[MultiNight] Frame accepted: affine residual {residual:F1}px ({affineResult.MatchedStarCount} matched stars, threshold {threshold:F1}px) — {tab.Target}-{tab.Filter}");
 
                 transformedImage = ImageTransformer.ApplyAffineTransformation(theImageArray, item.Width, item.Height, affineTransformationMatrix, flipped);
 
@@ -492,26 +494,28 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 redTab.ForcePushReference(new ImageProperties(item.Width, item.Height, (int)profileService.ActiveProfile.CameraSettings.BitDepth, item.IsBayered, item.Gain, item.Offset), stars, redChannelData.Data.FlatArray.ToFloatArray());
             } else {
                 // We only need to compute the transformation in one channel. The others should match.
-                affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, redTab.ReferenceStars);
+                var affineResult = ImageTransformer.ComputeAffineTransformationWithResidual(stars, redTab.ReferenceStars);
+                affineTransformationMatrix = affineResult.Matrix;
                 flipped = ImageTransformer.IsFlippedImage(affineTransformationMatrix);
                 if (flipped) {
                     // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
                     stars = ImageMath.Flip(stars, item.Width, item.Height);
-                    affineTransformationMatrix = ImageTransformer.ComputeAffineTransformation(stars, redTab.ReferenceStars);
+                    affineResult = ImageTransformer.ComputeAffineTransformationWithResidual(stars, redTab.ReferenceStars);
+                    affineTransformationMatrix = affineResult.Matrix;
                 }
 
                 // Layer 2: check affine residual before stacking (check on red channel only)
-                var residual = ImageTransformer.ComputeAlignmentResidual(stars, redTab.ReferenceStars, affineTransformationMatrix, flipped);
+                var residual = affineResult.ResidualPixels;
                 var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
                 if (residual > threshold) {
-                    Logger.Warning($"[MultiNight] OSC frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px — {item.Target}");
+                    Logger.Warning($"[MultiNight] OSC frame rejected: affine residual {residual:F1}px ({affineResult.MatchedStarCount} matched stars) exceeds threshold {threshold:F1}px — {item.Target}");
                     Notification.ShowWarning($"Live Stack - OSC frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
                     RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "layer2_affine_residual");
                     RecordRejectedFrame(item.Target, LiveStackBag.GREEN_OSC, "layer2_affine_residual");
                     RecordRejectedFrame(item.Target, LiveStackBag.BLUE_OSC, "layer2_affine_residual");
                     return;
                 }
-                Logger.Info($"[MultiNight] OSC frame accepted: affine residual {residual:F1}px (threshold {threshold:F1}px) — {item.Target}");
+                Logger.Info($"[MultiNight] OSC frame accepted: affine residual {residual:F1}px ({affineResult.MatchedStarCount} matched stars, threshold {threshold:F1}px) — {item.Target}");
 
                 var redAligned = ImageTransformer.ApplyAffineTransformation(debayeredImage.Data.Red, item.Width, item.Height, affineTransformationMatrix, flipped);
                 redTab.AddImage(redAligned);
