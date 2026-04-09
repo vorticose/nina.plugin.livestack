@@ -378,7 +378,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
                 // Multi-night: attempt to resume from existing stack
                 var resumeResult = MultiNightManager.TryResume(target, filter, item.Width, item.Height,
-                    (int)profileService.ActiveProfile.CameraSettings.BinningX);
+                    (int)(profileService.ActiveProfile.CameraSettings.BinningX ?? 1));
                 if (resumeResult != null) {
                     bag.ResumeFrom(resumeResult.Stack, resumeResult.ImageCount, resumeResult.ReferenceStars);
                     var sidecarKey = $"{target}-{filter}";
@@ -387,7 +387,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 } else if (LivestackMediator.Plugin.MultiNightMode) {
                     // Multi-night enabled but no existing stack — create fresh sidecar
                     var (sidecar, sidecarPath) = MultiNightManager.CreateFreshSidecar(target, filter, item.Width, item.Height,
-                        (int)profileService.ActiveProfile.CameraSettings.BinningX);
+                        (int)(profileService.ActiveProfile.CameraSettings.BinningX ?? 1));
                     var sidecarKey = $"{target}-{filter}";
                     activeSidecars[sidecarKey] = (sidecar, sidecarPath);
 
