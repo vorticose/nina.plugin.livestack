@@ -443,10 +443,10 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
             // Multi-night: record accepted frame in sidecar
             RecordAcceptedFrame(tab.Target, tab.Filter, item.ExposureTime);
-            Logger.Info($"[MultiNight] Stack updated: {tab.Target}-{tab.Filter} now {tab.StackCount} frames");
 
             StatusUpdate("Rendering stack", item);
             await tab.Refresh(token);
+            Logger.Info($"[MultiNight] Stack updated: {tab.Target}-{tab.Filter} now {tab.StackCount} frames");
             if (LivestackMediator.Plugin.SaveStackedLights) {
                 StatusUpdate("Saving stack", item);
                 tab.SaveToDisk();
