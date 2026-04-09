@@ -15,6 +15,9 @@
     <Product>Livestack</Product>
     <Description>**CUSTOM FORK** Live stacking within N.I.N.A.</Description>
     <Copyright>Copyright ©  2024-2025</Copyright>
+    <Version>1.0.2.0</Version>
+    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <FileVersion>1.0.2.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
