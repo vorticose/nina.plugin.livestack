@@ -185,8 +185,9 @@ namespace NINA.Plugin.Livestack.Image {
         }
 
         /// <summary>
-        /// Compute the RMS alignment residual by transforming incoming stars through the affine matrix
-        /// and measuring the distance to the nearest reference star. Returns the RMS error in pixels.
+        /// Compute the RMS alignment residual by transforming reference stars through the affine matrix
+        /// (which maps reference → incoming) and measuring the distance to the nearest actual incoming star.
+        /// Returns the RMS error in pixels.
         /// </summary>
         public static double ComputeAlignmentResidual(List<Point> stars, List<Point> referenceStars, double[,] affineMatrix, bool flipped = false) {
             if (stars == null || stars.Count == 0 || referenceStars == null || referenceStars.Count == 0) {
@@ -196,14 +197,16 @@ namespace NINA.Plugin.Livestack.Image {
             double sumSquaredError = 0;
             int count = 0;
 
-            foreach (var star in stars) {
-                var transformed = ApplyAffineMatrix((int)star.X, (int)star.Y, affineMatrix);
+            // The affine matrix maps reference coordinates → incoming coordinates
+            // So we transform each reference star and find the nearest actual incoming star
+            foreach (var refStar in referenceStars) {
+                var transformed = ApplyAffineMatrix((int)refStar.X, (int)refStar.Y, affineMatrix);
 
-                // Find nearest reference star
+                // Find nearest incoming star
                 double minDistSq = double.MaxValue;
-                foreach (var refStar in referenceStars) {
-                    double dx = transformed.X - refStar.X;
-                    double dy = transformed.Y - refStar.Y;
+                foreach (var star in stars) {
+                    double dx = transformed.X - star.X;
+                    double dy = transformed.Y - star.Y;
                     double distSq = dx * dx + dy * dy;
                     if (distSq < minDistSq) minDistSq = distSq;
                 }
