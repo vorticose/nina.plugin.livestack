@@ -208,6 +208,49 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
         }
 
         [RelayCommand]
+        private async Task ResetStack(IStackTab tab) {
+            if (tab == null) return;
+            while (tab.Locked) {
+                await Task.Delay(10);
+            }
+
+            var target = tab.Target;
+            var filter = tab.Filter;
+            var key = $"{target}-{filter}";
+
+            // Archive the FITS file and sidecar
+            var fitsPath = Path.Combine(LivestackMediator.Plugin.WorkingDirectory, "stacks",
+                NINA.Core.Utility.CoreUtil.ReplaceAllInvalidFilenameChars($"{target}-{filter}.fits"));
+            var sidecarPath = MultiNight.StackSidecar.GetSidecarPath(fitsPath);
+
+            if (File.Exists(fitsPath)) {
+                var date = DateTime.UtcNow.ToString("yyyy-MM-dd");
+                var dir = Path.GetDirectoryName(fitsPath);
+                var archiveFits = Path.Combine(dir, NINA.Core.Utility.CoreUtil.ReplaceAllInvalidFilenameChars($"{target}-{filter}-archived-{date}.fits"));
+                archiveFits = NINA.Core.Utility.CoreUtil.GetUniqueFilePath(archiveFits, "{0}_{1}");
+                try {
+                    File.Move(fitsPath, archiveFits);
+                    Logger.Info($"[MultiNight] Stack reset: archived to {Path.GetFileName(archiveFits)}");
+                    if (File.Exists(sidecarPath)) {
+                        File.Move(sidecarPath, Path.ChangeExtension(archiveFits, ".json"));
+                    }
+                } catch (Exception ex) {
+                    Logger.Error($"[MultiNight] Failed to archive stack: {ex.Message}");
+                }
+            }
+
+            // Clear sidecar and validation tracking
+            activeSidecars.TryRemove(key, out _);
+            layer1Validated.TryRemove(key, out _);
+            layer1RetryCount.TryRemove(key, out _);
+
+            // Remove the tab — next frame will create a fresh one
+            await RemoveTab(tab);
+
+            Notification.ShowInformation($"[MultiNight] Stack reset for {target}-{filter}");
+        }
+
+        [RelayCommand]
         private void DeleteQualityGate(IQualityGate obj) {
             obj.PropertyChanged -= QualityGate_PropertyChanged;
             QualityGates.Remove(obj);
