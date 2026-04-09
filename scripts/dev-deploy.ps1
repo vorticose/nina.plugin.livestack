@@ -55,7 +55,11 @@ git -C $repoRoot pull
 if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed."; exit 1 }
 Write-Host "Pull complete." -ForegroundColor Green
 
-# --- Clean and build (PostBuild target in csproj deploys to NINA plugins folder) ---
+# --- Restore, clean, and build (PostBuild target in csproj deploys to NINA plugins folder) ---
+Write-Host "Restoring packages..." -ForegroundColor Cyan
+dotnet restore $solutionFile --nologo -v q
+if ($LASTEXITCODE -ne 0) { Write-Error "Restore failed."; exit 1 }
+
 Write-Host "Cleaning and building..." -ForegroundColor Cyan
 dotnet clean $solutionFile -c Release --nologo -v q 2>$null
 dotnet build $solutionFile -c Release --no-restore --nologo -v q -p:WarningLevel=0 -clp:ErrorsOnly
