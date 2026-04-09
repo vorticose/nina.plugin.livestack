@@ -125,6 +125,14 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     var localQueue = queue;
                     this.imageSaveMediator.BeforeFinalizeImageSaved += ImageSaveMediator_BeforeFinalizeImageSaved;
                     this.stackSessionId = Guid.NewGuid();
+
+                    // Log multi-night configuration
+                    if (LivestackMediator.Plugin.MultiNightMode) {
+                        Logger.Info($"[MultiNight] Session starting — MultiNightMode=ON, PlatesolveThreshold={LivestackMediator.Plugin.PlatesolveThresholdArcmin}', AffineThreshold={LivestackMediator.Plugin.AffineResidualThresholdPixels}px, RetryFrames={LivestackMediator.Plugin.PlatesolveRetryFrames}, SaveStackedLights={LivestackMediator.Plugin.SaveStackedLights}, WorkingDir={LivestackMediator.Plugin.WorkingDirectory}");
+                    } else {
+                        Logger.Info("[MultiNight] Session starting — MultiNightMode=OFF");
+                    }
+
                     _ = messageBroker.Publish(new LiveStackStatusBroadcast(LiveStackStatus.Running, this.stackSessionId.Value));
 
                     while (!token.IsCancellationRequested) {
@@ -349,6 +357,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 if (item.IsBayered) { filter = LiveStackBag.RED_OSC; }
                 foreach (var gate in failedGates) {
                     RecordRejectedFrame(target, filter, $"quality_gate_{gate.Name}");
+                    Logger.Info($"[MultiNight] Quality gate rejection recorded: {gate.Name} — {target}-{filter}");
                 }
 
                 return false;
@@ -385,6 +394,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     // Save reference stars to sidecar
                     if (stars != null) {
                         MultiNightManager.SaveReferenceStars(sidecar, stars);
+                        Logger.Info($"[MultiNight] Saved {stars.Count} reference stars to sidecar for {target}-{filter}");
                     }
                 }
 
@@ -415,11 +425,12 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
                 if (residual > threshold) {
                     var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
-                    Logger.Warning($"[MultiNight] Frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px");
+                    Logger.Warning($"[MultiNight] Frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px — {target}-{tab.Filter}");
                     Notification.ShowWarning($"Live Stack - Frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
                     RecordRejectedFrame(target, tab.Filter, "layer2_affine_residual");
                     return;
                 }
+                Logger.Info($"[MultiNight] Frame accepted: affine residual {residual:F1}px (threshold {threshold:F1}px) — {tab.Target}-{tab.Filter}");
 
                 transformedImage = ImageTransformer.ApplyAffineTransformation(theImageArray, item.Width, item.Height, affineTransformationMatrix, flipped);
 
@@ -430,6 +441,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
             // Multi-night: record accepted frame in sidecar
             RecordAcceptedFrame(tab.Target, tab.Filter, item.ExposureTime);
+            Logger.Info($"[MultiNight] Stack updated: {tab.Target}-{tab.Filter} now {tab.StackCount} frames");
 
             StatusUpdate("Rendering stack", item);
             await tab.Refresh(token);
@@ -492,13 +504,14 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 var residual = ImageTransformer.ComputeAlignmentResidual(stars, redTab.ReferenceStars, affineTransformationMatrix, flipped);
                 var threshold = LivestackMediator.Plugin.AffineResidualThresholdPixels;
                 if (residual > threshold) {
-                    Logger.Warning($"[MultiNight] OSC frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px");
+                    Logger.Warning($"[MultiNight] OSC frame rejected: affine residual {residual:F1}px exceeds threshold {threshold:F1}px — {item.Target}");
                     Notification.ShowWarning($"Live Stack - OSC frame rejected: alignment residual {residual:F1}px exceeds {threshold:F1}px threshold");
                     RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "layer2_affine_residual");
                     RecordRejectedFrame(item.Target, LiveStackBag.GREEN_OSC, "layer2_affine_residual");
                     RecordRejectedFrame(item.Target, LiveStackBag.BLUE_OSC, "layer2_affine_residual");
                     return;
                 }
+                Logger.Info($"[MultiNight] OSC frame accepted: affine residual {residual:F1}px (threshold {threshold:F1}px) — {item.Target}");
 
                 var redAligned = ImageTransformer.ApplyAffineTransformation(debayeredImage.Data.Red, item.Width, item.Height, affineTransformationMatrix, flipped);
                 redTab.AddImage(redAligned);
@@ -792,6 +805,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             var key = $"{target}-{filter}";
             if (activeSidecars.TryGetValue(key, out var entry)) {
                 entry.sidecar.Save(entry.path);
+                Logger.Debug($"[MultiNight] Sidecar saved: {target}-{filter}, {entry.sidecar.TotalFrames} frames, {entry.sidecar.TotalExposureSeconds:F0}s total");
             }
         }
 

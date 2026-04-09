@@ -39,6 +39,7 @@ namespace NINA.Plugin.Livestack.MultiNight {
 
             var fitsPath = GetStackFilePath(target, filter);
             if (!File.Exists(fitsPath)) {
+                Logger.Info($"[MultiNight] No existing stack for {target}-{filter} at {fitsPath} — starting fresh");
                 return null;
             }
 
@@ -46,7 +47,8 @@ namespace NINA.Plugin.Livestack.MultiNight {
 
             try {
                 // Load the FITS stack
-                Logger.Info($"[MultiNight] Found existing stack at {fitsPath}, attempting resume");
+                var fileSize = new FileInfo(fitsPath).Length;
+                Logger.Info($"[MultiNight] Found existing stack at {fitsPath} ({fileSize / 1024.0 / 1024.0:F1}MB), attempting resume");
 
                 float[] stack;
                 int fitsWidth, fitsHeight;
