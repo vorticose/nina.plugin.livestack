@@ -439,7 +439,8 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 SaveSidecar(tab.Target, tab.Filter);
             }
 
-            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(tab.StackCount, tab.Filter, tab.Target, tab.StackImage), correlation));
+            var (totalExposure, sessionCount) = GetSidecarStats(tab.Target, tab.Filter);
+            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(tab.StackCount, tab.Filter, tab.Target, tab.StackImage, totalExposure, sessionCount), correlation));
         }
 
         private async Task StackOSC(float[] theImageArray, LiveStackItem item, LiveStackTab redTab, Guid correlation, CancellationToken token) {
@@ -551,9 +552,12 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 SaveSidecar(item.Target, LiveStackBag.BLUE_OSC);
             }
 
-            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(redTab.StackCount, redTab.Filter, redTab.Target, redTab.StackImage), correlation));
-            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(greenTab.StackCount, greenTab.Filter, greenTab.Target, greenTab.StackImage), correlation));
-            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(blueTab.StackCount, blueTab.Filter, blueTab.Target, blueTab.StackImage), correlation));
+            var (redExposure, redSessions) = GetSidecarStats(item.Target, LiveStackBag.RED_OSC);
+            var (greenExposure, greenSessions) = GetSidecarStats(item.Target, LiveStackBag.GREEN_OSC);
+            var (blueExposure, blueSessions) = GetSidecarStats(item.Target, LiveStackBag.BLUE_OSC);
+            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(redTab.StackCount, redTab.Filter, redTab.Target, redTab.StackImage, redExposure, redSessions), correlation));
+            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(greenTab.StackCount, greenTab.Filter, greenTab.Target, greenTab.StackImage, greenExposure, greenSessions), correlation));
+            _ = messageBroker.Publish(new LivestackBroadcast(LiveStackBroadcastContent.Monochrome(blueTab.StackCount, blueTab.Filter, blueTab.Target, blueTab.StackImage, blueExposure, blueSessions), correlation));
         }
 
         private async Task StackItem(LiveStackItem item, CancellationToken token) {
@@ -776,6 +780,14 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             }
         }
 
+        private (double? totalExposure, int? sessionCount) GetSidecarStats(string target, string filter) {
+            var key = $"{target}-{filter}";
+            if (activeSidecars.TryGetValue(key, out var entry)) {
+                return (entry.sidecar.TotalExposureSeconds, entry.sidecar.Sessions.Count);
+            }
+            return (null, null);
+        }
+
         private void SaveSidecar(string target, string filter) {
             var key = $"{target}-{filter}";
             if (activeSidecars.TryGetValue(key, out var entry)) {
@@ -830,7 +842,7 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
     public class LiveStackBroadcastContent {
 
-        private LiveStackBroadcastContent(bool isMonochrome, int? stackCount, int? redStackCount, int? greenStackCount, int? blueStackCount, string filter, string target, BitmapSource image) {
+        private LiveStackBroadcastContent(bool isMonochrome, int? stackCount, int? redStackCount, int? greenStackCount, int? blueStackCount, string filter, string target, BitmapSource image, double? totalExposureSeconds = null, int? sessionCount = null) {
             IsMonochrome = isMonochrome;
             StackCount = stackCount;
             RedStackCount = redStackCount;
@@ -839,9 +851,11 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             Filter = filter;
             Target = target;
             Image = image;
+            TotalExposureSeconds = totalExposureSeconds;
+            SessionCount = sessionCount;
         }
 
-        public static LiveStackBroadcastContent Monochrome(int stackCount, string filter, string target, BitmapSource image) {
+        public static LiveStackBroadcastContent Monochrome(int stackCount, string filter, string target, BitmapSource image, double? totalExposureSeconds = null, int? sessionCount = null) {
             return new LiveStackBroadcastContent(
                 true,
                 stackCount,
@@ -850,7 +864,9 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 null,
                 filter,
                 target,
-                image
+                image,
+                totalExposureSeconds,
+                sessionCount
             );
         }
 
@@ -878,6 +894,10 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
         public string Filter { get; }
         public string Target { get; }
         public BitmapSource Image { get; }
+
+        // Multi-night: cumulative stats from sidecar (null if single-session)
+        public double? TotalExposureSeconds { get; }
+        public int? SessionCount { get; }
     }
 
     public class LiveStackStatusBroadcast : IMessage {
