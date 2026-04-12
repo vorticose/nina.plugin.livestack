@@ -8,7 +8,7 @@
 
 $ErrorActionPreference = "Stop"
 $repoRoot     = Split-Path -Parent $PSScriptRoot
-$solutionFile = Join-Path $repoRoot "nina.plugin.livestack.sln"
+$solutionFile = Join-Path $repoRoot "nina.plugin.livestack.csproj"
 
 # --- Show current branch ---
 $currentBranch = git -C $repoRoot rev-parse --abbrev-ref HEAD
