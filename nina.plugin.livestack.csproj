@@ -15,6 +15,7 @@
     <Product>Livestack</Product>
     <Description>**CUSTOM FORK** Live stacking within N.I.N.A.</Description>
     <Copyright>Copyright ©  2024-2025</Copyright>
+    <Version>1.1.0.1</Version>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
