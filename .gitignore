@@ -104,3 +104,4 @@ Accord.dll.config
 /tmp/smoke[brackets]{curly}.fits
 /tmp
 /BenchmarkDotNet.Artifacts/results
+nina.plugin.livestack.benchmark/BenchmarkData/
