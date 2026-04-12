@@ -208,12 +208,11 @@ namespace NINA.Plugin.Livestack.Image {
             return absoluteDeviation.Median();
         }
 
-        public double[,] ComputeAffineTransformation(
+        private List<(Point Ref, Point Src, int Votes)> FindMatchedPairs(
                 List<Point> stars,
                 List<Point> referenceStars) {
-            if (stars == null || referenceStars == null || stars.Count < 3 || referenceStars.Count < 3) {
+            if (stars == null || referenceStars == null || stars.Count < 3 || referenceStars.Count < 3)
                 throw new InvalidOperationException("Not enough stars for affine transformation.");
-            }
 
             var referenceTriangles = ComputeTriangleList(referenceStars);
             var targetTriangles = ComputeTriangleList(stars);
@@ -227,11 +226,38 @@ namespace NINA.Plugin.Livestack.Image {
 
             var matches = ComputeMatchList(votingMatrix, referenceStars.Count, stars.Count, voteThreshold: 150);
 
-            var pairs = matches
+            return matches
                 .Select(m => (Ref: referenceStars[m.Index1], Src: stars[m.Index2], Votes: m.Votes))
                 .ToList();
+        }
 
+        public double[,] ComputeAffineTransformation(
+                List<Point> stars,
+                List<Point> referenceStars) {
+            var pairs = FindMatchedPairs(stars, referenceStars);
             return EstimateAffineTransformation(pairs);
+        }
+
+        public ImageTransformer.AffineResult ComputeAffineTransformationWithResidual(
+                List<Point> stars,
+                List<Point> referenceStars) {
+            var pairs = FindMatchedPairs(stars, referenceStars);
+            var matrix = EstimateAffineTransformation(pairs);
+
+            double sumSq = 0;
+            foreach (var pair in pairs) {
+                var proj = ApplyAffine(pair.Ref, matrix);
+                double dx = proj.X - pair.Src.X;
+                double dy = proj.Y - pair.Src.Y;
+                sumSq += dx * dx + dy * dy;
+            }
+            double residual = pairs.Count > 0 ? Math.Sqrt(sumSq / pairs.Count) : double.MaxValue;
+
+            return new ImageTransformer.AffineResult {
+                Matrix = matrix,
+                ResidualPixels = residual,
+                MatchedStarCount = pairs.Count
+            };
         }
 
         private double[,] EstimateAffineTransformation(List<(Point Ref, Point Src, int Votes)> pairs) {

@@ -31,15 +31,8 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
-using System.IO;
-using System.Drawing.Imaging;
-using NINA.Image.ImageData;
-using NINA.Core.Enum;
-using NINA.Equipment.Interfaces.Mediator;
-using NINA.Plugin.Interfaces;
 using NINA.Plugin.Livestack.MultiNight;
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.Windows.Media.Imaging;
 
 namespace NINA.Plugin.Livestack.LivestackDockables {
