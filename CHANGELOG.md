@@ -1,9 +1,13 @@
 # Livestack
 
+## 1.1.3.1 (custom fork, dev build)
+- Merged upstream 1.1.1.0 + 1.1.2.0 + 1.1.3.0 into the multi-night fork for better alignment robustness and diagnostic logging.
+- Alignment failures (including on stale multi-night reference stars) now record a rejected frame with a diagnostic log entry instead of crashing StartLiveStack. Reason tag: `alignment_failed`.
+
 ## 1.1.3.0
 - Fixed live-stack alignment star selection when detector brightness metadata is unusable.
     - Alignment now falls back to valid detected star centroids when MaxBrightness is saturated, invalid, or NaN, instead of producing zero filtered stars.
-- Improved “not enough alignment stars” logging with reject-reason diagnostics for invalid position, outside frame, invalid brightness, saturated brightness, HFR outlier, and fallback candidate count.
+- Improved ï¿½not enough alignment starsï¿½ logging with reject-reason diagnostics for invalid position, outside frame, invalid brightness, saturated brightness, HFR outlier, and fallback candidate count.
 
 ## 1.1.2.0
 - Added more logging for failure cases
