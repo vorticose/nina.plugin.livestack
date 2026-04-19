@@ -49,6 +49,24 @@ namespace NINA.Plugin.Livestack.Image {
             ImageCount++;
         }
 
+        public void AddTransformed(float[] image, double[,] affineMatrix, bool flippedImage) {
+            if (Stack == null) {
+                Stack = LivestackMediator.GetImageTransformer().ApplyAffineTransformation(image, Properties.Width, Properties.Height, affineMatrix, flippedImage);
+            } else {
+                LivestackMediator.GetImageTransformer().ApplyAffineTransformationAndStack(image, Stack, ImageCount, Properties.Width, Properties.Height, affineMatrix, flippedImage);
+            }
+            ImageCount++;
+        }
+
+        public void AddTransformed(ushort[] image, double[,] affineMatrix, bool flippedImage) {
+            if (Stack == null) {
+                Stack = LivestackMediator.GetImageTransformer().ApplyAffineTransformation(image, Properties.Width, Properties.Height, affineMatrix, flippedImage);
+            } else {
+                LivestackMediator.GetImageTransformer().ApplyAffineTransformationAndStack(image, Stack, ImageCount, Properties.Width, Properties.Height, affineMatrix, flippedImage);
+            }
+            ImageCount++;
+        }
+
         /// <summary>
         /// Resume a stack from previously saved data (multi-night mode).
         /// Sets the stack array and image count without triggering the sequential average formula.
