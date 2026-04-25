@@ -34,6 +34,7 @@
     <s:String x:Key="SaveCalibratedFlatsTooltip">Keeps the calibrated flat FITS files created by Stack flats. When off, they are deleted after the flat master is generated.</s:String>
     <s:String x:Key="SaveCalibratedLightsTooltip">Saves calibrated light FITS files in the working directory under calibrated\light.</s:String>
     <s:String x:Key="SaveStackedLightsTooltip">Automatically saves updated stack output in the working directory. Monochrome and channel stacks are saved as FITS files, and RGB combination stacks are saved as PNG files.</s:String>
+    <s:String x:Key="SaveSessionStacksTooltip">When multi-night mode is enabled, also save a per-session FITS alongside the cumulative stack. Filename includes the session start date (e.g. M101-Ha-2026-04-24.fits). Acts as a per-night checkpoint and matches stock single-session semantics. No effect when multi-night mode is off.</s:String>
     <s:String x:Key="DefaultStretchTooltip">Initial stretch value used when new mono and RGB stack tabs are created.</s:String>
     <s:String x:Key="DefaultBlackClippingTooltip">Initial black-clipping value used when new mono and RGB stack tabs are created.</s:String>
     <s:String x:Key="DefaultEnableBackgroundExtractionTooltip">Experimental background extraction for new mono and RGB stack tabs. It only changes the displayed preview, not saved FITS stack data. Disable it if it suppresses real nebulosity, galaxy halos, or creates blotchy gradients.</s:String>
@@ -177,6 +178,23 @@
                             HorizontalAlignment="Left"
                             IsChecked="{Binding SaveStackedLights, Mode=TwoWay}"
                             ToolTip="{StaticResource SaveStackedLightsTooltip}" />
+                    </Grid>
+
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Livestack_Label" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Text="Save per-session stacks?"
+                            ToolTip="{StaticResource SaveSessionStacksTooltip}" />
+                        <CheckBox
+                            Grid.Column="1"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            IsChecked="{Binding SaveSessionStacks, Mode=TwoWay}"
+                            ToolTip="{StaticResource SaveSessionStacksTooltip}" />
                     </Grid>
 
                     <Grid Margin="0,5,0,0">

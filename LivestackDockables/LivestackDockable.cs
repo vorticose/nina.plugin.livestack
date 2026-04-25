@@ -457,11 +457,34 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     }
                 }
 
-                tab = new LiveStackTab(profileService, bag);
+                var (sessionBag, sessionDate) = TryCreateSessionBag(target, filter, item, stars, cumulativeResumed: resumeResult != null);
+                tab = new LiveStackTab(profileService, bag, sessionBag, sessionDate);
                 Tabs.Add(tab);
                 return tab as LiveStackTab;
             }
             return tab as LiveStackTab;
+        }
+
+        private (LiveStackBag sessionBag, string sessionDate) TryCreateSessionBag(string target, string filter, LiveStackItem item, List<Accord.Point> referenceStars, bool cumulativeResumed = false) {
+            if (!LivestackMediator.Plugin.MultiNightMode || !LivestackMediator.Plugin.SaveSessionStacks) {
+                return (null, null);
+            }
+
+            var dateSuffix = MultiNight.SessionStackManager.GetSessionDateSuffix();
+            var sessionBag = new LiveStackBag(target, filter,
+                new ImageProperties(item.Width, item.Height, (int)profileService.ActiveProfile.CameraSettings.BitDepth, item.IsBayered, item.Gain, item.Offset),
+                item.MetaData, referenceStars);
+
+            // Only resume today's session FITS if the cumulative stack was also resumed.
+            // Prevents orphaned session FITS (from a prior Reset) being inherited by a fresh cumulative.
+            if (cumulativeResumed) {
+                var resume = MultiNight.SessionStackManager.TryResume(target, filter, item.Width, item.Height, dateSuffix);
+                if (resume != null) {
+                    sessionBag.ResumeFrom(resume.Stack, resume.ImageCount, referenceStars);
+                }
+            }
+
+            return (sessionBag, dateSuffix);
         }
 
         private async Task StackMono(float[] theImageArray, LiveStackItem item, LiveStackTab tab, Guid correlation, CancellationToken token) {
@@ -648,8 +671,9 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             var greenTab = Tabs.FirstOrDefault(x => x is LiveStackTab && x.Filter == LiveStackBag.GREEN_OSC && x.Target == item.Target) as LiveStackTab;
             if (greenTab == null) {
                 var bag = new LiveStackBag(item.Target, LiveStackBag.GREEN_OSC, imageProperties, item.MetaData, stars);
-                bag.Add(debayeredImage.Data.Green.ToFloatArray());
-                greenTab = new LiveStackTab(profileService, bag);
+                var (greenSessionBag, greenSessionDate) = TryCreateSessionBag(item.Target, LiveStackBag.GREEN_OSC, item, stars);
+                greenTab = new LiveStackTab(profileService, bag, greenSessionBag, greenSessionDate);
+                greenTab.AddImage(debayeredImage.Data.Green.ToFloatArray());
                 Tabs.Add(greenTab);
             } else if (pushedReference) {
                 greenTab.ForcePushReference(imageProperties, stars, debayeredImage.Data.Green.ToFloatArray());
@@ -661,8 +685,9 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
             var blueTab = Tabs.FirstOrDefault(x => x is LiveStackTab && x.Filter == LiveStackBag.BLUE_OSC && x.Target == item.Target) as LiveStackTab;
             if (blueTab == null) {
                 var bag = new LiveStackBag(item.Target, LiveStackBag.BLUE_OSC, imageProperties, item.MetaData, stars);
-                bag.Add(debayeredImage.Data.Blue.ToFloatArray());
-                blueTab = new LiveStackTab(profileService, bag);
+                var (blueSessionBag, blueSessionDate) = TryCreateSessionBag(item.Target, LiveStackBag.BLUE_OSC, item, stars);
+                blueTab = new LiveStackTab(profileService, bag, blueSessionBag, blueSessionDate);
+                blueTab.AddImage(debayeredImage.Data.Blue.ToFloatArray());
                 Tabs.Add(blueTab);
             } else if (pushedReference) {
                 blueTab.ForcePushReference(imageProperties, stars, debayeredImage.Data.Blue.ToFloatArray());
