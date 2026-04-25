@@ -86,16 +86,22 @@ namespace NINA.Plugin.Livestack.Image {
             ImageCount = 1;
         }
 
-        private string GetStackFilePath() {
+        private string GetStackFilePath() => GetStackFilePath(null);
+
+        private string GetStackFilePath(string suffix) {
             var destinationFolder = Path.Combine(LivestackMediator.Plugin.WorkingDirectory, "stacks");
             if (!Directory.Exists(destinationFolder)) { Directory.CreateDirectory(destinationFolder); }
 
-            var destinationFile = Path.Combine(destinationFolder, CoreUtil.ReplaceAllInvalidFilenameChars($"{Target}-{Filter}.fits"));
-            return destinationFile;
+            var name = string.IsNullOrEmpty(suffix)
+                ? $"{Target}-{Filter}.fits"
+                : $"{Target}-{Filter}-{suffix}.fits";
+            return Path.Combine(destinationFolder, CoreUtil.ReplaceAllInvalidFilenameChars(name));
         }
 
-        public void AutoSaveToDisk() {
-            var destinationFile = GetStackFilePath();
+        public void AutoSaveToDisk() => AutoSaveToDisk(null);
+
+        public void AutoSaveToDisk(string suffix) {
+            var destinationFile = GetStackFilePath(suffix);
             var tempFile = Path.Combine(destinationFile + ".tmp");
 
             if (File.Exists(tempFile)) {

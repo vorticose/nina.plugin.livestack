@@ -203,6 +203,16 @@ namespace NINA.Plugin.Livestack {
             }
         }
 
+        public bool SaveSessionStacks {
+            get {
+                return PluginSettings.GetValueBoolean(nameof(SaveSessionStacks), true);
+            }
+            set {
+                PluginSettings.SetValueBoolean(nameof(SaveSessionStacks), value);
+                RaisePropertyChanged();
+            }
+        }
+
         // Multi-Night Stacking settings
 
         public bool MultiNightMode {

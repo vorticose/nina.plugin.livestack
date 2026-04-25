@@ -24,6 +24,8 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
     public partial class LiveStackTab : BaseVM, IStackTab {
         private LiveStackBag bag;
+        private LiveStackBag sessionBag;
+        private string sessionDateSuffix;
 
         [ObservableProperty]
         private BitmapSource stackImage;
@@ -67,10 +69,15 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
         public ImageProperties Properties => bag.Properties;
 
-        public LiveStackTab(IProfileService profileService, LiveStackBag bag) : base(profileService) {
+        public LiveStackTab(IProfileService profileService, LiveStackBag bag)
+            : this(profileService, bag, null, null) { }
+
+        public LiveStackTab(IProfileService profileService, LiveStackBag bag, LiveStackBag sessionBag, string sessionDateSuffix) : base(profileService) {
             this.target = bag.Target;
             this.filter = bag.Filter;
             this.bag = bag;
+            this.sessionBag = sessionBag;
+            this.sessionDateSuffix = sessionDateSuffix;
             this.stackCount = bag.ImageCount;
             stretchFactor = LivestackMediator.Plugin.DefaultStretchAmount;
             blackClipping = LivestackMediator.Plugin.DefaultBlackClipping;
@@ -145,22 +152,29 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
         public void AddImage(float[] data) {
             bag.Add(data);
+            sessionBag?.Add(data);
         }
 
         public void AddTransformedImage(float[] data, double[,] affineMatrix, bool flippedImage) {
             bag.AddTransformed(data, affineMatrix, flippedImage);
+            sessionBag?.AddTransformed(data, affineMatrix, flippedImage);
         }
 
         public void AddTransformedImage(ushort[] data, double[,] affineMatrix, bool flippedImage) {
             bag.AddTransformed(data, affineMatrix, flippedImage);
+            sessionBag?.AddTransformed(data, affineMatrix, flippedImage);
         }
 
         public void ForcePushReference(ImageProperties properties, List<Accord.Point> referenceStars, float[] stack) {
             bag.ForcePushReference(properties, referenceStars, stack);
+            sessionBag?.ForcePushReference(properties, referenceStars, stack);
         }
 
         public void SaveToDisk() {
             bag.AutoSaveToDisk();
+            if (sessionBag != null && !string.IsNullOrEmpty(sessionDateSuffix) && sessionBag.ImageCount > 0) {
+                sessionBag.AutoSaveToDisk(sessionDateSuffix);
+            }
         }
     }
 }
