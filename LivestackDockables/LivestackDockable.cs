@@ -393,12 +393,19 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     return;
                 }
 
-                var affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, tab.ReferenceStars);
-                var flipped = LivestackMediator.GetImageTransformer().IsFlippedImage(affineTransformationMatrix);
-                if (flipped) {
-                    // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
-                    stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
+                double[,] affineTransformationMatrix;
+                bool flipped;
+                try {
                     affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, tab.ReferenceStars);
+                    flipped = LivestackMediator.GetImageTransformer().IsFlippedImage(affineTransformationMatrix);
+                    if (flipped) {
+                        // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
+                        stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
+                        affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, tab.ReferenceStars);
+                    }
+                } catch (AffineRotationImplausibleException ex) {
+                    LogSkippedForImplausibleRotation("mono frame", item, ex.RotationDegrees);
+                    return;
                 }
                 tab.AddTransformedImage(theImageArray, affineTransformationMatrix, flipped);
 
@@ -472,12 +479,17 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 }
 
                 // We only need to compute the transformation in one channel. The others should match.
-                affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, redTab.ReferenceStars);
-                flipped = LivestackMediator.GetImageTransformer().IsFlippedImage(affineTransformationMatrix);
-                if (flipped) {
-                    // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
-                    stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
+                try {
                     affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, redTab.ReferenceStars);
+                    flipped = LivestackMediator.GetImageTransformer().IsFlippedImage(affineTransformationMatrix);
+                    if (flipped) {
+                        // The reference is flipped - most likely a meridian flip happend. Rotate starlist by 180° and recompute the affine transform for a tighter fit. The apply method will then account for the indexing switch
+                        stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
+                        affineTransformationMatrix = LivestackMediator.GetImageTransformer().ComputeAffineTransformation(stars, redTab.ReferenceStars);
+                    }
+                } catch (AffineRotationImplausibleException ex) {
+                    LogSkippedForImplausibleRotation("OSC red channel", item, ex.RotationDegrees);
+                    return;
                 }
                 redTab.AddTransformedImage(debayeredImage.Data.Red, affineTransformationMatrix, flipped);
             }
@@ -635,6 +647,10 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 ? $"; Filtered reference stars={referenceAlignmentStars.Value}"
                 : "; Reference stars=not set";
             Logger.Warning($"Live Stack skipping frame ({context}) because affine alignment needs at least {MinimumAffineStarCount} filtered stars on both sides. Raw detector stars={rawDetectedStars}; Filtered current-frame stars={filteredAlignmentStars}{referenceStarMessage}; Target=\"{item.Target}\"; Filter=\"{item.Filter}\"; Frame=\"{item.Path}\"");
+        }
+
+        private static void LogSkippedForImplausibleRotation(string context, LiveStackItem item, double rotationDegrees) {
+            Logger.Warning($"Live Stack skipping frame ({context}) because the computed alignment rotation of {rotationDegrees:F2} degrees is not near 0 or 180 degrees, indicating a spurious star match. Target=\"{item.Target}\"; Filter=\"{item.Filter}\"; Frame=\"{item.Path}\"");
         }
 
         private void RegisterCalibrationMasters(ICalibrationManager calibrationManager) {

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using NINA.Astrometry;
+using NINA.Core.MyMessageBox;
 using NINA.Core.Utility;
 using NINA.Image.ImageAnalysis;
 using NINA.Image.ImageData;
@@ -16,6 +17,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -156,6 +158,27 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
 
         public void ForcePushReference(ImageProperties properties, List<Accord.Point> referenceStars, float[] stack) {
             bag.ForcePushReference(properties, referenceStars, stack);
+        }
+
+        [RelayCommand]
+        public void RestartStack() {
+            if (Locked) {
+                MyMessageBox.Show("A frame is currently being processed for this stack. Please wait a moment and try again.", "Live Stack Busy");
+                return;
+            }
+
+            var result = MyMessageBox.Show(
+                $"Restart the live stack for \"{Target}\" / \"{Filter}\"?\n\nThis permanently clears all {StackCount} currently stacked frames. The next incoming frame becomes the new reference.",
+                "Restart Live Stack",
+                MessageBoxButton.YesNo,
+                MessageBoxResult.No);
+            if (result != MessageBoxResult.Yes) {
+                return;
+            }
+
+            bag.Reset();
+            StackCount = 0;
+            StackImage = null;
         }
 
         public void SaveToDisk() {

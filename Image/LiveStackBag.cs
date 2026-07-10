@@ -74,6 +74,15 @@ namespace NINA.Plugin.Livestack.Image {
             ImageCount = 1;
         }
 
+        /// <summary>
+        /// Discards the accumulated stack and reference so the next incoming frame starts a fresh stack.
+        /// </summary>
+        public void Reset() {
+            ReferenceImageStars = null;
+            Stack = null;
+            ImageCount = 0;
+        }
+
         private string GetStackFilePath() {
             var destinationFolder = Path.Combine(LivestackMediator.Plugin.WorkingDirectory, "stacks");
             if (!Directory.Exists(destinationFolder)) { Directory.CreateDirectory(destinationFolder); }
