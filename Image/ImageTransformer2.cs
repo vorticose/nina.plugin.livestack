@@ -10,6 +10,20 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.Livestack.Image {
 
+    /// <summary>
+    /// Thrown when every candidate alignment transform for a frame has an implausible rotation
+    /// (not near 0 or 180 degrees relative to the reference frame), indicating a spurious star
+    /// match rather than a genuine meridian flip or negligible drift.
+    /// </summary>
+    public class AffineRotationImplausibleException : InvalidOperationException {
+        public double RotationDegrees { get; }
+
+        public AffineRotationImplausibleException(double rotationDegrees)
+            : base($"Rejected affine transform with implausible rotation of {rotationDegrees:F2} degrees; expected near 0 or 180 degrees.") {
+            RotationDegrees = rotationDegrees;
+        }
+    }
+
     public class ImageTransformer2 : IImageTransformer {
         private const int MaxStars = 1000;
         private const int MaxTriangleFallbackStars = 72;
@@ -30,6 +44,13 @@ namespace NINA.Plugin.Livestack.Image {
         private const double MinQuadShortestSideRatio = 0.05d;
         private const double QuadHashBinSize = 0.025d;
         private const double MaxQuadDescriptorDistanceSquared = 0.006d;
+
+        /// <summary>
+        /// Maximum degrees a candidate transform's rotation may deviate from 0 or 180 degrees.
+        /// Live-stack frames of the same target only ever rotate relative to the reference frame
+        /// via a meridian flip (~180 degrees); any other rotation indicates a spurious star match.
+        /// </summary>
+        private const double MaxPlausibleRotationDeviationDeg = 20d;
 
         private static readonly Lazy<ImageTransformer2> lazy = new Lazy<ImageTransformer2>(() => new ImageTransformer2());
 
@@ -534,7 +555,8 @@ namespace NINA.Plugin.Livestack.Image {
                 double[,] orderedTriangleTransformation = ComputeTriangleAffineTransformation(
                     LimitPointSetForTriangleFallback(stars, preserveOrder: true),
                     LimitPointSetForTriangleFallback(referenceStars, preserveOrder: true));
-                if (HasSufficientProjectedInliers(orderedTriangleTransformation, referenceStars, stars)) {
+                if (HasSufficientProjectedInliers(orderedTriangleTransformation, referenceStars, stars)
+                        && IsRotationNearIdentityOrFlip(orderedTriangleTransformation, MaxPlausibleRotationDeviationDeg)) {
                     return orderedTriangleTransformation;
                 }
             } catch {
@@ -543,7 +565,10 @@ namespace NINA.Plugin.Livestack.Image {
             string quadFallbackReason = "no validated quad-derived affine model";
             try {
                 if (TryComputeQuadAffineTransformation(referenceStars, stars, out double[,] quadAffineTransformation)) {
-                    return quadAffineTransformation;
+                    if (IsRotationNearIdentityOrFlip(quadAffineTransformation, MaxPlausibleRotationDeviationDeg)) {
+                        return quadAffineTransformation;
+                    }
+                    quadFallbackReason = $"quad-derived affine model had implausible rotation of {ComputeRotationDegrees(quadAffineTransformation):F2} degrees";
                 }
             } catch (Exception ex) {
                 quadFallbackReason = $"{ex.GetType().Name}: {ex.Message}";
@@ -551,9 +576,15 @@ namespace NINA.Plugin.Livestack.Image {
 
             Logger.Info($"Quad star matching failed ({quadFallbackReason}); falling back to triangle matching. Reference stars: {referenceStars.Count}; target stars: {stars.Count}");
 
-            return ComputeTriangleAffineTransformation(
+            double[,] fallbackTransformation = ComputeTriangleAffineTransformation(
                 LimitPointSetForTriangleFallback(stars, preserveOrder: false),
                 LimitPointSetForTriangleFallback(referenceStars, preserveOrder: false));
+
+            if (!IsRotationNearIdentityOrFlip(fallbackTransformation, MaxPlausibleRotationDeviationDeg)) {
+                throw new AffineRotationImplausibleException(ComputeRotationDegrees(fallbackTransformation));
+            }
+
+            return fallbackTransformation;
         }
 
         /// <summary>
@@ -2491,7 +2522,8 @@ namespace NINA.Plugin.Livestack.Image {
         }
 
         /// <summary>
-        /// Rejects affine models with unrealistic scale or near-singular determinants.
+        /// Rejects affine models with unrealistic scale, near-singular determinants, or an
+        /// implausible rotation (see <see cref="MaxPlausibleRotationDeviationDeg"/>).
         /// </summary>
         /// <param name="model">Affine matrix to validate.</param>
         /// <returns><c>true</c> when the matrix is plausible for live-stack frame alignment.</returns>
@@ -2510,7 +2542,36 @@ namespace NINA.Plugin.Livestack.Image {
                 && secondColumnScale > 0.75d
                 && secondColumnScale < 1.25d
                 && Math.Abs(determinant) > 0.6d
-                && Math.Abs(determinant) < 1.4d;
+                && Math.Abs(determinant) < 1.4d
+                && IsRotationNearIdentityOrFlip(model, MaxPlausibleRotationDeviationDeg);
+        }
+
+        /// <summary>
+        /// Extracts the rotation angle (in degrees, normalized to [0, 360)) encoded by an affine matrix.
+        /// </summary>
+        /// <param name="model">Affine matrix to inspect.</param>
+        /// <returns>The rotation angle in degrees.</returns>
+        private static double ComputeRotationDegrees(double[,] model) {
+            double a = model[0, 0];
+            double b = model[0, 1];
+            double angleDeg = Math.Atan2(b, a) * (180.0 / Math.PI);
+            if (angleDeg < 0) angleDeg += 360d;
+            return angleDeg;
+        }
+
+        /// <summary>
+        /// Checks whether a transform's rotation is close to 0 degrees (no rotation) or 180 degrees
+        /// (meridian flip) within the given tolerance. Live-stack frames of the same target should
+        /// never align at any other rotation, so anything else indicates a spurious star match.
+        /// </summary>
+        /// <param name="model">Affine matrix to inspect.</param>
+        /// <param name="toleranceDeg">Allowed deviation from 0 or 180 degrees.</param>
+        /// <returns><c>true</c> when the rotation is near 0 or 180 degrees.</returns>
+        private static bool IsRotationNearIdentityOrFlip(double[,] model, double toleranceDeg) {
+            double angleDeg = ComputeRotationDegrees(model);
+            double deviationFromZero = Math.Min(angleDeg, 360d - angleDeg);
+            double deviationFromFlip = Math.Abs(angleDeg - 180d);
+            return deviationFromZero <= toleranceDeg || deviationFromFlip <= toleranceDeg;
         }
 
         /// <summary>

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NINA.Core.Enum;
 using NINA.Core.Model;
+using NINA.Core.MyMessageBox;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Core.Utility.WindowService;
@@ -217,6 +218,16 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
         [RelayCommand]
         private async Task ResetStack(IStackTab tab) {
             if (tab == null) return;
+
+            var confirmation = MyMessageBox.Show(
+                $"Restart the live stack for \"{tab.Target}\" / \"{tab.Filter}\"?\n\nThe frames stacked so far are archived to a dated file, and the next incoming frame starts a fresh stack.",
+                "Restart Live Stack",
+                MessageBoxButton.YesNo,
+                MessageBoxResult.No);
+            if (confirmation != MessageBoxResult.Yes) {
+                return;
+            }
+
             while (tab.Locked) {
                 await Task.Delay(10);
             }
@@ -512,6 +523,11 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 ImageTransformer.AffineResult affineResult;
                 try {
                     affineResult = LivestackMediator.GetImageTransformer().ComputeAffineTransformationWithResidual(stars, tab.ReferenceStars);
+                } catch (AffineRotationImplausibleException ex) {
+                    var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
+                    LogSkippedForImplausibleRotation("mono frame", item, ex.RotationDegrees);
+                    RecordRejectedFrame(target, tab.Filter, "implausible_rotation");
+                    return;
                 } catch (Exception ex) {
                     var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
                     Logger.Warning($"[MultiNight] Alignment failed: {ex.GetType().Name}: {ex.Message}. Target stars={stars.Count}; Reference stars={tab.ReferenceStars?.Count}; Target=\"{target}\"; Filter=\"{tab.Filter}\"; Frame=\"{item.Path}\"");
@@ -525,6 +541,11 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
                     try {
                         affineResult = LivestackMediator.GetImageTransformer().ComputeAffineTransformationWithResidual(stars, tab.ReferenceStars);
+                    } catch (AffineRotationImplausibleException ex) {
+                        var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
+                        LogSkippedForImplausibleRotation("mono frame (flipped)", item, ex.RotationDegrees);
+                        RecordRejectedFrame(target, tab.Filter, "implausible_rotation");
+                        return;
                     } catch (Exception ex) {
                         var target = string.IsNullOrWhiteSpace(item.Target) ? LiveStackBag.NOTARGET : item.Target;
                         Logger.Warning($"[MultiNight] Flipped alignment failed: {ex.GetType().Name}: {ex.Message}. Target=\"{target}\"; Filter=\"{tab.Filter}\"");
@@ -627,6 +648,12 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 ImageTransformer.AffineResult affineResult;
                 try {
                     affineResult = LivestackMediator.GetImageTransformer().ComputeAffineTransformationWithResidual(stars, redTab.ReferenceStars);
+                } catch (AffineRotationImplausibleException ex) {
+                    LogSkippedForImplausibleRotation("OSC red channel", item, ex.RotationDegrees);
+                    RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "implausible_rotation");
+                    RecordRejectedFrame(item.Target, LiveStackBag.GREEN_OSC, "implausible_rotation");
+                    RecordRejectedFrame(item.Target, LiveStackBag.BLUE_OSC, "implausible_rotation");
+                    return;
                 } catch (Exception ex) {
                     Logger.Warning($"[MultiNight] OSC alignment failed: {ex.GetType().Name}: {ex.Message}. Target stars={stars.Count}; Reference stars={redTab.ReferenceStars?.Count}; Target=\"{item.Target}\"; Frame=\"{item.Path}\"");
                     RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "alignment_failed");
@@ -641,6 +668,12 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                     stars = LivestackMediator.GetImageMath().Flip(stars, item.Width, item.Height);
                     try {
                         affineResult = LivestackMediator.GetImageTransformer().ComputeAffineTransformationWithResidual(stars, redTab.ReferenceStars);
+                    } catch (AffineRotationImplausibleException ex) {
+                        LogSkippedForImplausibleRotation("OSC red channel (flipped)", item, ex.RotationDegrees);
+                        RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "implausible_rotation");
+                        RecordRejectedFrame(item.Target, LiveStackBag.GREEN_OSC, "implausible_rotation");
+                        RecordRejectedFrame(item.Target, LiveStackBag.BLUE_OSC, "implausible_rotation");
+                        return;
                     } catch (Exception ex) {
                         Logger.Warning($"[MultiNight] OSC flipped alignment failed: {ex.GetType().Name}: {ex.Message}. Target=\"{item.Target}\"");
                         RecordRejectedFrame(item.Target, LiveStackBag.RED_OSC, "alignment_failed");
@@ -847,6 +880,10 @@ namespace NINA.Plugin.Livestack.LivestackDockables {
                 ? $"; Filtered reference stars={referenceAlignmentStars.Value}"
                 : "; Reference stars=not set";
             Logger.Warning($"Live Stack skipping frame ({context}) because affine alignment needs at least {MinimumAffineStarCount} filtered stars on both sides. Raw detector stars={rawDetectedStars}; Filtered current-frame stars={filteredAlignmentStars}{referenceStarMessage}; Target=\"{item.Target}\"; Filter=\"{item.Filter}\"; Frame=\"{item.Path}\"");
+        }
+
+        private static void LogSkippedForImplausibleRotation(string context, LiveStackItem item, double rotationDegrees) {
+            Logger.Warning($"Live Stack skipping frame ({context}) because the computed alignment rotation of {rotationDegrees:F2} degrees is not near 0 or 180 degrees, indicating a spurious star match. Target=\"{item.Target}\"; Filter=\"{item.Filter}\"; Frame=\"{item.Path}\"");
         }
 
         private void RegisterCalibrationMasters(ICalibrationManager calibrationManager) {

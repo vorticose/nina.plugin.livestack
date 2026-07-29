@@ -446,6 +446,33 @@ namespace nina.plugin.livestack.test {
         }
 
         [Test]
+        public void ComputeAffineTransformation_RejectsSpuriousIntermediateRotation() {
+            var transformer = ImageTransformer2.Instance;
+            var referenceStars = CreateRandomStarField(count: 3000, width: 4200, height: 2800, seed: 151);
+
+            // A self-consistent but physically implausible 35 degree rotation. Live-stack frames of
+            // the same target only ever align near 0 degrees (no rotation) or 180 degrees (meridian
+            // flip); anything else must be rejected rather than silently accepted.
+            double angleRad = 35.0 * Math.PI / 180.0;
+            double cos = Math.Cos(angleRad);
+            double sin = Math.Sin(angleRad);
+            double[,] spurious = new double[3, 3] {
+                { cos, -sin, 300.0 },
+                { sin, cos, -150.0 },
+                { 0.0, 0.0, 1.0 }
+            };
+
+            var sourceStars = ApplyAffine(referenceStars, spurious, seed: 227, jitter: 0.22f);
+            sourceStars.AddRange(CreateRandomStarField(count: 350, width: 4200, height: 2800, seed: 808));
+            Shuffle(sourceStars, seed: 331);
+            Shuffle(referenceStars, seed: 977);
+
+            Assert.That(
+                () => transformer.ComputeAffineTransformation(sourceStars, referenceStars),
+                Throws.TypeOf<AffineRotationImplausibleException>());
+        }
+
+        [Test]
         public void NeedsStarDetection_RedetectsWhenDetectedStarsIsZero() {
             var needsStarDetectionMethod = typeof(LivestackDockable).GetMethod("NeedsStarDetection", BindingFlags.Static | BindingFlags.NonPublic);
 

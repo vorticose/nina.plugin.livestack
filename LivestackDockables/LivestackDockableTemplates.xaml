@@ -380,8 +380,12 @@
                                             Width="35"
                                             Margin="2.5"
                                             Command="{Binding DataContext.ResetStackCommand, ElementName=PART_TheGrid}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="Reset stack (archive and start fresh)">
+                                            CommandParameter="{Binding}">
+                                            <Button.ToolTip>
+                                                <ToolTip ToolTipService.ShowOnDisabled="True">
+                                                    <TextBlock Text="Restart this live stack: the accumulated stack is archived to a dated file and the next incoming frame starts a fresh one" />
+                                                </ToolTip>
+                                            </Button.ToolTip>
                                             <Path
                                                 Margin="5"
                                                 Data="{StaticResource LoopSVG}"
