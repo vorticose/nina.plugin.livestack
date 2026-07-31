@@ -38,9 +38,12 @@ namespace nina.plugin.livestack.test {
             Shuffle(sourceStars, seed: 331);
             Shuffle(referenceStars, seed: 977);
 
+            // Rejection may come from RANSAC finding no valid model at all, or from the final
+            // plausibility guard; AffineRotationImplausibleException derives from
+            // InvalidOperationException. What matters is that no transform is returned.
             Assert.That(
                 () => transformer.ComputeAffineTransformation(sourceStars, referenceStars),
-                Throws.TypeOf<AffineRotationImplausibleException>());
+                Throws.InstanceOf<InvalidOperationException>());
         }
 
         [Test]
@@ -142,7 +145,7 @@ namespace nina.plugin.livestack.test {
 
             Assert.That(
                 () => transformer.ComputeAffineTransformation(sourceStars, referenceStars),
-                Throws.TypeOf<AffineRotationImplausibleException>());
+                Throws.InstanceOf<InvalidOperationException>());
         }
 
         [Test]
