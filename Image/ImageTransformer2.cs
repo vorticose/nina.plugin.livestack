@@ -11,16 +11,25 @@ using System.Threading.Tasks;
 namespace NINA.Plugin.Livestack.Image {
 
     /// <summary>
-    /// Thrown when every candidate alignment transform for a frame has an implausible rotation
-    /// (not near 0 or 180 degrees relative to the reference frame), indicating a spurious star
-    /// match rather than a genuine meridian flip or negligible drift.
+    /// Thrown when every candidate alignment transform for a frame is geometrically implausible for
+    /// two frames of the same target: an implausible rotation (not near 0 or 180 degrees), or a
+    /// mirrored/degenerate linear part. Either indicates a spurious star match rather than a genuine
+    /// meridian flip or negligible drift.
     /// </summary>
     public class AffineRotationImplausibleException : InvalidOperationException {
         public double RotationDegrees { get; }
 
+        /// <summary>Short description of which plausibility rule rejected the model.</summary>
+        public string Reason { get; }
+
         public AffineRotationImplausibleException(double rotationDegrees)
-            : base($"Rejected affine transform with implausible rotation of {rotationDegrees:F2} degrees; expected near 0 or 180 degrees.") {
+            : this(rotationDegrees, $"implausible rotation of {rotationDegrees:F2} degrees; expected near 0 or 180 degrees") {
+        }
+
+        public AffineRotationImplausibleException(double rotationDegrees, string reason)
+            : base($"Rejected affine transform: {reason}.") {
             RotationDegrees = rotationDegrees;
+            Reason = reason;
         }
     }
 
@@ -556,7 +565,7 @@ namespace NINA.Plugin.Livestack.Image {
                     LimitPointSetForTriangleFallback(stars, preserveOrder: true),
                     LimitPointSetForTriangleFallback(referenceStars, preserveOrder: true));
                 if (HasSufficientProjectedInliers(orderedTriangleTransformation, referenceStars, stars)
-                        && IsRotationNearIdentityOrFlip(orderedTriangleTransformation, MaxPlausibleRotationDeviationDeg)) {
+                        && IsPlausibleAffineModel(orderedTriangleTransformation)) {
                     return orderedTriangleTransformation;
                 }
             } catch {
@@ -565,10 +574,17 @@ namespace NINA.Plugin.Livestack.Image {
             string quadFallbackReason = "no validated quad-derived affine model";
             try {
                 if (TryComputeQuadAffineTransformation(referenceStars, stars, out double[,] quadAffineTransformation)) {
-                    if (IsRotationNearIdentityOrFlip(quadAffineTransformation, MaxPlausibleRotationDeviationDeg)) {
-                        return quadAffineTransformation;
+                    string quadImplausibility = DescribeImplausibility(quadAffineTransformation);
+                    if (quadImplausibility == null) {
+                        // A quad model that only explains a handful of stars is a coincidence, not an
+                        // alignment. Every accepted path is now inlier-gated, not just this one.
+                        if (HasSufficientProjectedInliers(quadAffineTransformation, referenceStars, stars)) {
+                            return quadAffineTransformation;
+                        }
+                        quadFallbackReason = "quad-derived affine model explained too few stars";
+                    } else {
+                        quadFallbackReason = $"quad-derived affine model rejected: {quadImplausibility}";
                     }
-                    quadFallbackReason = $"quad-derived affine model had implausible rotation of {ComputeRotationDegrees(quadAffineTransformation):F2} degrees";
                 }
             } catch (Exception ex) {
                 quadFallbackReason = $"{ex.GetType().Name}: {ex.Message}";
@@ -580,8 +596,16 @@ namespace NINA.Plugin.Livestack.Image {
                 LimitPointSetForTriangleFallback(stars, preserveOrder: false),
                 LimitPointSetForTriangleFallback(referenceStars, preserveOrder: false));
 
-            if (!IsRotationNearIdentityOrFlip(fallbackTransformation, MaxPlausibleRotationDeviationDeg)) {
-                throw new AffineRotationImplausibleException(ComputeRotationDegrees(fallbackTransformation));
+            string fallbackImplausibility = DescribeImplausibility(fallbackTransformation);
+            if (fallbackImplausibility != null) {
+                throw new AffineRotationImplausibleException(ComputeRotationDegrees(fallbackTransformation), fallbackImplausibility);
+            }
+
+            if (!HasSufficientProjectedInliers(fallbackTransformation, referenceStars, stars)) {
+                int inlierCount = CollectProjectedInliers(fallbackTransformation, referenceStars, stars, inlierThresholdPx: 4.0d).Count;
+                throw new AffineRotationImplausibleException(
+                    ComputeRotationDegrees(fallbackTransformation),
+                    $"model explained only {inlierCount} of {referenceStars.Count} reference stars, too few to trust");
             }
 
             return fallbackTransformation;
@@ -2528,22 +2552,55 @@ namespace NINA.Plugin.Livestack.Image {
         /// <param name="model">Affine matrix to validate.</param>
         /// <returns><c>true</c> when the matrix is plausible for live-stack frame alignment.</returns>
         private bool IsPlausibleAffineModel(double[,] model) {
+            return DescribeImplausibility(model) == null;
+        }
+
+        /// <summary>
+        /// Returns null when the model is plausible, otherwise a short description of the rule it broke.
+        /// </summary>
+        /// <remarks>
+        /// The determinant test is deliberately signed. Two frames of the same target differ by a
+        /// proper rotation (near 0 degrees, or near 180 for a meridian flip); both have a positive
+        /// determinant. A negative determinant is a mirrored model, which no real frame pair can
+        /// produce, so it is always a spurious star correspondence. Testing only the magnitude let
+        /// mirrored garbage through: a matrix like [[0.99, 0.17], [0.16, -1.01]] has |det| ~ 1.03
+        /// and column scales ~ 1.0, and its first row alone reads as a ~10 degree rotation, so it
+        /// passed every check while matching 39 of 3000 stars.
+        /// </remarks>
+        /// <param name="model">Affine matrix to validate.</param>
+        /// <returns>Null when plausible; otherwise the reason for rejection.</returns>
+        private string DescribeImplausibility(double[,] model) {
             double a = model[0, 0];
             double b = model[0, 1];
             double c = model[1, 0];
             double d = model[1, 1];
 
+            if (!IsFinite(a) || !IsFinite(b) || !IsFinite(c) || !IsFinite(d)) {
+                return "non-finite linear part";
+            }
+
             double firstColumnScale = Math.Sqrt((a * a) + (c * c));
             double secondColumnScale = Math.Sqrt((b * b) + (d * d));
             double determinant = (a * d) - (b * c);
 
-            return firstColumnScale > 0.75d
-                && firstColumnScale < 1.25d
-                && secondColumnScale > 0.75d
-                && secondColumnScale < 1.25d
-                && Math.Abs(determinant) > 0.6d
-                && Math.Abs(determinant) < 1.4d
-                && IsRotationNearIdentityOrFlip(model, MaxPlausibleRotationDeviationDeg);
+            if (determinant <= 0d) {
+                return $"mirrored model (determinant {determinant:F3} is not positive); frames of the same target never differ by a reflection";
+            }
+
+            if (firstColumnScale <= 0.75d || firstColumnScale >= 1.25d
+                    || secondColumnScale <= 0.75d || secondColumnScale >= 1.25d) {
+                return $"implausible scale (column scales {firstColumnScale:F3} and {secondColumnScale:F3})";
+            }
+
+            if (determinant <= 0.6d || determinant >= 1.4d) {
+                return $"near-singular or inflated determinant ({determinant:F3})";
+            }
+
+            if (!IsRotationNearIdentityOrFlip(model, MaxPlausibleRotationDeviationDeg)) {
+                return $"implausible rotation of {ComputeRotationDegrees(model):F2} degrees; expected near 0 or 180 degrees";
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -2552,9 +2609,16 @@ namespace NINA.Plugin.Livestack.Image {
         /// <param name="model">Affine matrix to inspect.</param>
         /// <returns>The rotation angle in degrees.</returns>
         private static double ComputeRotationDegrees(double[,] model) {
+            // Angle of the nearest proper rotation, taken from the whole 2x2 block rather than the
+            // first row. For an exact rotation this is identical to the old Atan2(b, a) reading
+            // (same sign convention, so IsFlippedImage still agrees); for a noisy or sheared model
+            // it is the least-squares angle instead of whatever row 0 happened to say.
             double a = model[0, 0];
             double b = model[0, 1];
-            double angleDeg = Math.Atan2(b, a) * (180.0 / Math.PI);
+            double c = model[1, 0];
+            double d = model[1, 1];
+
+            double angleDeg = Math.Atan2(b - c, a + d) * (180.0 / Math.PI);
             if (angleDeg < 0) angleDeg += 360d;
             return angleDeg;
         }
